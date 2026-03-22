@@ -3,7 +3,7 @@
 #include "tracking/main_loop.h"
 
 // Mouse Variables
-Toggle mouseEnabled;
+Tristate mouseState;
 Toggle mouseCalibration;
 
 // Adjust this value to control mouse sensitivity. Higher number = slower response.
@@ -27,12 +27,9 @@ void calibrateIMU(MPU6050* accelgyro, int offsets[6]);
 void quickCalibrateIMU(MPU6050* accelgyro, int offsets[6]);
 
 static int16_t g_imu[6];
-uint32_t lastMultiaxisReport = -1;
-uint32_t lastMotionTime = -1;
 
 int imu_read(double* vec)
 {
-    lastMotionTime = board_millis();
     mpu.getMotion6(&g_imu[0], &g_imu[1], &g_imu[2], &g_imu[3], &g_imu[4], &g_imu[5]);
 
     vec[0] = -((double)g_imu[0] * 4 / 32768) * G;
@@ -106,9 +103,14 @@ void mouse_init()
     mpu.setSleepEnabled(true);
 }
 
-void mouse_cb(int8_t x, int8_t y) {
-    int mouseButtons = buttonState[BTN_L1] | (buttonState[BTN_R1] << 1);
-    tud_hid_mouse_report(REPORT_ID_MOUSE, mouseButtons, x, y, 0, 0);
+void mouse_cb(int8_t x, int8_t y)
+{
+    if (mouseState == 1) {
+        int mouseButtons = buttonState[BTN_L1] | (buttonState[BTN_R1] << 1);
+        tud_hid_mouse_report(REPORT_ID_MOUSE, mouseButtons, x, y, 0, 0);
+    }
+    else if (mouseState == 2)
+        tud_hid_report(REPORT_ID_MULTI_AXIS, g_imu, 12);
 }
 
 uint16_t get_mouse_report(uint8_t* buffer, uint16_t reqlen)
@@ -140,20 +142,21 @@ bool send_mouse_report()
     start_ms += interval_ms;
 
     // Hotkey+ and L3 toggles the mouse cursor to an on/off state
-    if (mouseEnabled.changed(buttonState[BTN_HOTKEY_PLUS] && buttonState[BTN_L3])) {
-        if (mouseEnabled) {
+    if (mouseState.changed(buttonState[BTN_HOTKEY_PLUS] && buttonState[BTN_L3])) {
+        if (mouseState == 1) { // Entering mouse mode, enable tracking
             mpu.setSleepEnabled(false);
             sleep_ms(100);
             tracking_begin();
         }
-        else {
+        else if (mouseState == 0) { // Exiting motion mode, disable tracking
             mpu.setSleepEnabled(true);
             sleep_ms(100);
             tracking_end();
         }
+        // Otherwise, we're switching from mouse mode to motion mode
     }
 
-    if (!mouseEnabled)
+    if (mouseState != 1)
         return false;
 
     if (mouseCalibration.changed(buttonState[BTN_HOTKEY_PLUS] && buttonState[BTN_HOTKEY_MINUS])) {
@@ -194,11 +197,10 @@ bool send_multiaxis_report()
         return false; // not enough time
     start_ms += interval_ms;
 
-    if (lastMultiaxisReport == lastMotionTime)
+    if (mouseState != 2)
         return false;
 
-    tud_hid_report(REPORT_ID_MULTI_AXIS, g_imu, 12);
-    lastMultiaxisReport = lastMotionTime;
+    tracking_step(mouse_cb);
 
     return true;
 }

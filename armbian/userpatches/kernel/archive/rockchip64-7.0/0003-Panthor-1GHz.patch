@@ -1,0 +1,274 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Doe <john.doe@somewhere.on.planet>
+Date: Thu, 19 Mar 2026 16:46:17 +0000
+Subject: Panthor 1 GHz
+
+Signed-off-by: John Doe <john.doe@somewhere.on.planet>
+---
+ Documentation/devicetree/bindings/gpu/arm,mali-valhall-csf.yaml |  3 +-
+ arch/arm64/boot/dts/rockchip/rk3588-base.dtsi                   | 10 +--
+ arch/arm64/boot/dts/rockchip/rk3588-opp.dtsi                    |  5 ++
+ arch/arm64/boot/dts/rockchip/rk3588j.dtsi                       |  5 ++
+ drivers/gpu/drm/panthor/panthor_devfreq.c                       | 45 ++++++++++
+ drivers/gpu/drm/panthor/panthor_device.c                        | 16 +++-
+ drivers/gpu/drm/panthor/panthor_device.h                        |  3 +
+ 7 files changed, 80 insertions(+), 7 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/gpu/arm,mali-valhall-csf.yaml b/Documentation/devicetree/bindings/gpu/arm,mali-valhall-csf.yaml
+index 8eccd4338a2b..5713020068ec 100644
+--- a/Documentation/devicetree/bindings/gpu/arm,mali-valhall-csf.yaml
++++ b/Documentation/devicetree/bindings/gpu/arm,mali-valhall-csf.yaml
+@@ -38,20 +38,21 @@ properties:
+       - const: mmu
+       - const: gpu
+ 
+   clocks:
+     minItems: 1
+-    maxItems: 3
++    maxItems: 4
+ 
+   clock-names:
+     minItems: 1
+     items:
+       - const: core
+       - enum:
+           - coregroup
+           - stacks
+       - const: stacks
++      - const: bus
+ 
+   nvmem-cells:
+     items:
+       - description: bitmask of functional shader cores
+ 
+diff --git a/arch/arm64/boot/dts/rockchip/rk3588-base.dtsi b/arch/arm64/boot/dts/rockchip/rk3588-base.dtsi
+index 7fe9593d8c19..3677f64edac1 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3588-base.dtsi
++++ b/arch/arm64/boot/dts/rockchip/rk3588-base.dtsi
+@@ -448,15 +448,15 @@ scmi_shmem: shmem@10f000 {
+ 
+ 	gpu: gpu@fb000000 {
+ 		compatible = "rockchip,rk3588-mali", "arm,mali-valhall-csf";
+ 		reg = <0x0 0xfb000000 0x0 0x200000>;
+ 		#cooling-cells = <2>;
+-		assigned-clocks = <&scmi_clk SCMI_CLK_GPU>;
+-		assigned-clock-rates = <200000000>;
+-		clocks = <&cru CLK_GPU>, <&cru CLK_GPU_COREGROUP>,
+-			 <&cru CLK_GPU_STACKS>;
+-		clock-names = "core", "coregroup", "stacks";
++		assigned-clocks = <&cru CLK_GPU>, <&scmi_clk SCMI_CLK_GPU>;
++		assigned-clock-rates = <198000000>, <200000000>;
++		clocks = <&scmi_clk SCMI_CLK_GPU>, <&cru CLK_GPU_COREGROUP>,
++			 <&cru CLK_GPU_STACKS>, <&cru CLK_GPU>;
++		clock-names = "core", "coregroup", "stacks", "bus";
+ 		dynamic-power-coefficient = <2982>;
+ 		interrupts = <GIC_SPI 92 IRQ_TYPE_LEVEL_HIGH 0>,
+ 			     <GIC_SPI 93 IRQ_TYPE_LEVEL_HIGH 0>,
+ 			     <GIC_SPI 94 IRQ_TYPE_LEVEL_HIGH 0>;
+ 		interrupt-names = "job", "mmu", "gpu";
+diff --git a/arch/arm64/boot/dts/rockchip/rk3588-opp.dtsi b/arch/arm64/boot/dts/rockchip/rk3588-opp.dtsi
+index b5d630d2c879..921b1977223a 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3588-opp.dtsi
++++ b/arch/arm64/boot/dts/rockchip/rk3588-opp.dtsi
+@@ -116,10 +116,15 @@ opp-2400000000 {
+ 	};
+ 
+ 	gpu_opp_table: opp-table-gpu {
+ 		compatible = "operating-points-v2";
+ 
++		opp-200000000 {
++			opp-hz = /bits/ 64 <200000000>;
++			opp-microvolt = <675000 675000 850000>;
++			opp-suspend;
++		};
+ 		opp-300000000 {
+ 			opp-hz = /bits/ 64 <300000000>;
+ 			opp-microvolt = <675000 675000 850000>;
+ 		};
+ 		opp-400000000 {
+diff --git a/arch/arm64/boot/dts/rockchip/rk3588j.dtsi b/arch/arm64/boot/dts/rockchip/rk3588j.dtsi
+index e1e0e3fc0ca7..1ca74d4fb1cd 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3588j.dtsi
++++ b/arch/arm64/boot/dts/rockchip/rk3588j.dtsi
+@@ -67,10 +67,15 @@ opp-1608000000 {
+ 	};
+ 
+ 	gpu_opp_table: opp-table-gpu {
+ 		compatible = "operating-points-v2";
+ 
++		opp-200000000 {
++			opp-hz = /bits/ 64 <200000000>;
++			opp-microvolt = <750000 750000 850000>;
++			opp-suspend;
++		};
+ 		opp-300000000 {
+ 			opp-hz = /bits/ 64 <300000000>;
+ 			opp-microvolt = <750000 750000 850000>;
+ 		};
+ 		opp-400000000 {
+diff --git a/drivers/gpu/drm/panthor/panthor_devfreq.c b/drivers/gpu/drm/panthor/panthor_devfreq.c
+index 2249b41ca4af..ce91dadc41ff 100644
+--- a/drivers/gpu/drm/panthor/panthor_devfreq.c
++++ b/drivers/gpu/drm/panthor/panthor_devfreq.c
+@@ -128,19 +128,60 @@ static struct devfreq_dev_profile panthor_devfreq_profile = {
+ 	.target = panthor_devfreq_target,
+ 	.get_dev_status = panthor_devfreq_get_dev_status,
+ 	.get_cur_freq = panthor_devfreq_get_cur_freq,
+ };
+ 
++static int panthor_devfreq_config_clks(struct device *dev,
++				       struct opp_table *opp_table,
++				       struct dev_pm_opp *opp,
++				       void *data, bool scaling_down)
++{
++	struct panthor_device *ptdev = dev_get_drvdata(dev);
++	unsigned long *target = data;
++	unsigned long freq;
++	int ret = 0;
++
++	if (!pm_runtime_enabled(dev))
++		return 0;
++
++	/* One of target and opp must be available */
++	if (target) {
++		freq = *target;
++	} else if (opp) {
++		freq = dev_pm_opp_get_freq(opp);
++	} else {
++		WARN_ON(1);
++		return -EINVAL;
++	}
++
++	pm_runtime_get_noresume(dev);
++
++	if (!pm_runtime_suspended(dev)) {
++		ret = clk_set_rate(ptdev->clks.core, freq);
++		if (ret)
++			dev_err(dev, "failed to set clock rate: %lu\n", freq);
++	}
++
++	pm_runtime_put_noidle(dev);
++
++	return ret;
++}
++
+ int panthor_devfreq_init(struct panthor_device *ptdev)
+ {
+ 	/* There's actually 2 regulators (mali and sram), but the OPP core only
+ 	 * supports one.
+ 	 *
+ 	 * We assume the sram regulator is coupled with the mali one and let
+ 	 * the coupling logic deal with voltage updates.
+ 	 */
+ 	static const char * const reg_names[] = { "mali", NULL };
++	static const char * const clk_names[] = { "core", NULL };
++	struct dev_pm_opp_config config = {
++		.clk_names = clk_names,
++		.config_clks = panthor_devfreq_config_clks,
++	};
+ 	struct thermal_cooling_device *cooling;
+ 	struct device *dev = ptdev->base.dev;
+ 	struct panthor_devfreq *pdevfreq;
+ 	struct opp_table *table;
+ 	struct dev_pm_opp *opp;
+@@ -169,10 +210,14 @@ int panthor_devfreq_init(struct panthor_device *ptdev)
+ 			if (ret != -EPROBE_DEFER)
+ 				DRM_DEV_ERROR(dev, "Couldn't set OPP regulators\n");
+ 			return ret;
+ 		}
+ 
++		ret = devm_pm_opp_set_config(dev, &config);
++		if (ret)
++			return ret;
++
+ 		ret = devm_pm_opp_of_add_table(dev);
+ 		if (ret)
+ 			return ret;
+ 	} else {
+ 		dev_pm_opp_put_opp_table(table);
+diff --git a/drivers/gpu/drm/panthor/panthor_device.c b/drivers/gpu/drm/panthor/panthor_device.c
+index 54fbb1aa07c5..346ce5c9dce2 100644
+--- a/drivers/gpu/drm/panthor/panthor_device.c
++++ b/drivers/gpu/drm/panthor/panthor_device.c
+@@ -70,10 +70,16 @@ static int panthor_clk_init(struct panthor_device *ptdev)
+ 	if (IS_ERR(ptdev->clks.coregroup))
+ 		return dev_err_probe(ptdev->base.dev,
+ 				     PTR_ERR(ptdev->clks.coregroup),
+ 				     "get 'coregroup' clock failed");
+ 
++	ptdev->clks.bus = devm_clk_get_optional(ptdev->base.dev, "bus");
++	if (IS_ERR(ptdev->clks.bus))
++		return dev_err_probe(ptdev->base.dev,
++				     PTR_ERR(ptdev->clks.bus),
++				     "get 'bus' clock failed");
++
+ 	drm_info(&ptdev->base, "clock rate = %lu\n", clk_get_rate(ptdev->clks.core));
+ 	return 0;
+ }
+ 
+ static int panthor_init_power(struct device *dev)
+@@ -507,14 +513,18 @@ int panthor_device_resume(struct device *dev)
+ 	if (atomic_read(&ptdev->pm.state) != PANTHOR_DEVICE_PM_STATE_SUSPENDED)
+ 		return -EINVAL;
+ 
+ 	atomic_set(&ptdev->pm.state, PANTHOR_DEVICE_PM_STATE_RESUMING);
+ 
+-	ret = clk_prepare_enable(ptdev->clks.core);
++	ret = clk_prepare_enable(ptdev->clks.bus);
+ 	if (ret)
+ 		goto err_set_suspended;
+ 
++	ret = clk_prepare_enable(ptdev->clks.core);
++	if (ret)
++		goto err_disable_bus_clk;
++
+ 	ret = clk_prepare_enable(ptdev->clks.stacks);
+ 	if (ret)
+ 		goto err_disable_core_clk;
+ 
+ 	ret = clk_prepare_enable(ptdev->clks.coregroup);
+@@ -569,10 +579,13 @@ int panthor_device_resume(struct device *dev)
+ 	clk_disable_unprepare(ptdev->clks.stacks);
+ 
+ err_disable_core_clk:
+ 	clk_disable_unprepare(ptdev->clks.core);
+ 
++err_disable_bus_clk:
++	clk_disable_unprepare(ptdev->clks.bus);
++
+ err_set_suspended:
+ 	atomic_set(&ptdev->pm.state, PANTHOR_DEVICE_PM_STATE_SUSPENDED);
+ 	atomic_set(&ptdev->pm.recovery_needed, 1);
+ 	return ret;
+ }
+@@ -616,8 +629,9 @@ int panthor_device_suspend(struct device *dev)
+ 	panthor_devfreq_suspend(ptdev);
+ 
+ 	clk_disable_unprepare(ptdev->clks.coregroup);
+ 	clk_disable_unprepare(ptdev->clks.stacks);
+ 	clk_disable_unprepare(ptdev->clks.core);
++	clk_disable_unprepare(ptdev->clks.bus);
+ 	atomic_set(&ptdev->pm.state, PANTHOR_DEVICE_PM_STATE_SUSPENDED);
+ 	return 0;
+ }
+diff --git a/drivers/gpu/drm/panthor/panthor_device.h b/drivers/gpu/drm/panthor/panthor_device.h
+index f35e52b9546a..26fe712338cb 100644
+--- a/drivers/gpu/drm/panthor/panthor_device.h
++++ b/drivers/gpu/drm/panthor/panthor_device.h
+@@ -115,10 +115,13 @@ struct panthor_device {
+ 	/** @iomem: CPU mapping of the IOMEM region. */
+ 	void __iomem *iomem;
+ 
+ 	/** @clks: GPU clocks. */
+ 	struct {
++		/** @bus: Bus clock. This clock is optional. */
++		struct clk *bus;
++
+ 		/** @core: Core clock. */
+ 		struct clk *core;
+ 
+ 		/** @stacks: Stacks clock. This clock is optional. */
+ 		struct clk *stacks;
+-- 
+Created with Armbian build tools https://github.com/armbian/build
+

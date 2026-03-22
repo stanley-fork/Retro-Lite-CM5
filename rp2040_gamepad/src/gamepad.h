@@ -1,7 +1,7 @@
 #include "bsp/board.h"
 #include "tusb.h"
 #include "usb_descriptors.h"
-#include "toggle.h"
+#include "tristate.h"
 
 // Serial Comms
 const uint8_t brightnessUp = 0x00;
