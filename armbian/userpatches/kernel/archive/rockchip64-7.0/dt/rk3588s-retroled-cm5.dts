@@ -181,6 +181,17 @@
 		vin-supply = <&vcc3v3_sys>;
 	};
 
+	dp0-con {
+		compatible = "dp-connector";
+		type = "dp";
+
+		port {
+			dp0_con_in: endpoint {
+				remote-endpoint = <&dp0_out_con>;
+			};
+		};
+	};
+
 	hdmi0-con {
 		compatible = "hdmi-connector";
 		type = "a";
@@ -234,6 +245,12 @@
 	};
 };
 
+&spi2 {
+	pmic@0 {
+		/delete-property/ system-power-controller;
+	};
+};
+
 &combphy0_ps {
 	status = "okay";
 };
@@ -243,8 +260,22 @@
 };
 
 &dp0 {
-	force-hpd;
+	// force-hpd;
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&dp0_hpd>;
+	hpd-gpios = <&gpio0 RK_PD3 GPIO_ACTIVE_HIGH>;
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		port@1 {
+			reg = <1>;
+			dp0_out_con: endpoint {
+				remote-endpoint = <&dp0_con_in>;
+			};
+		};
+	};
 };
 
 &dp0_in {
@@ -277,11 +308,11 @@
 			native-mode = <&dsi1_timing0>;
 
 			dsi1_timing0: timing0 {
-				clock-frequency = <133812000>;
+				clock-frequency = <134278000>;
 				hactive = <1080>;
 				vactive = <1920>;
 				hfront-porch = <26>;
-				hsync-len = <2>;
+				hsync-len = <8>;
 				hback-porch = <36>;
 				vfront-porch = <8>;
 				vsync-len = <4>;
@@ -492,6 +523,12 @@
 		};
 	};
 
+	dp {
+		dp0_hpd: dp0-hpd {
+			rockchip,pins = <0 RK_PD3 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
 	dsi1-lcd {
 		dsi1_lcd_rst_gpio: dsi1-lcd-rst-gpio {
 			rockchip,pins = <1 RK_PB0 RK_FUNC_GPIO &pcfg_pull_up>;
@@ -642,11 +679,14 @@
 };
 
 &usbdp_phy0 {
+	rockchip,dp-lane-mux = <0 1 2 3>;
 	status = "okay";
 };
 
 &vop {
 	status = "okay";
+	assigned-clocks = <&cru DCLK_VOP3>;
+	assigned-clock-parents = <&cru PLL_V0PLL>;
 };
 
 &vop_mmu {
