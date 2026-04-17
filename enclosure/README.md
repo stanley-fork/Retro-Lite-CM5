@@ -3,5 +3,14 @@ The shell is complete. Rear triggers have been tweaked to work better than previ
 
 After assembling v1 and running tests, I am working on improvements to the design which will be uploaded to STL_v2 folder. It is recommended to assemble v2 only (v1 is now deprecated). 
 
+Currently, we are working on improving the design for v3. This will include:
+
+- Analog triggers
+- RP2350B upgrade from RP2040 
+- Thinner shell design (19mm --> 16mm)
+- New joysticks
+- Rumble motors
+- CNC machinable 
+
 
 
